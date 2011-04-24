@@ -170,6 +170,15 @@
 /** The given literal is not a valid number */
 #define GIT_ENOTNUM (GIT_ERROR - 25)
 
+/** Indexer does not yet have final hash of packfile. */
+#define GIT_EPACKINDEXERHASHUNKNOWN (GIT_ERROR - 26)
+
+/** Indexer is direct but being provided raw packfile data. */
+#define GIT_EPACKINDEXERISDIRECT (GIT_ERROR - 27)
+
+/** Indexer is not direct and is being provided direct entries. */
+#define GIT_EPACKINDEXERISNOTDIRECT (GIT_ERROR - 28)
+
 GIT_BEGIN_DECL
 
 typedef struct {

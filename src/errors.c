@@ -32,6 +32,9 @@ static struct {
 	{GIT_EEXISTS, "A reference with this name already exists"},
 	{GIT_EOVERFLOW, "The given integer literal is too large to be parsed"},
 	{GIT_ENOTNUM, "The given literal is not a valid number"},
+	{GIT_EPACKINDEXERHASHUNKNOWN, "The packfile indexer does not yet have final hash of packfile"},
+	{GIT_EPACKINDEXERISDIRECT, "Packfile indexer is direct"},
+	{GIT_EPACKINDEXERISNOTDIRECT, "Packfile indexer is not direct"}
 };
 
 const char *git_strerror(int num)

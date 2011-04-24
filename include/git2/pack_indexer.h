@@ -66,6 +66,13 @@ GIT_EXTERN(void) git_pack_indexer_free(git_pack_indexer *indexer);
 GIT_EXTERN(int) git_pack_indexer_add(git_pack_indexer *indexer, git_oid *id,
 		uint32_t crc, off_t offset);
 
+GIT_EXTERN(int) git_pack_indexer_build(git_pack_indexer *indexer, void **data,
+		size_t *len);
+
+GIT_EXTERN(int) git_pack_indexer_packhash(git_pack_indexer* indexer, git_oid *pack_hash);
+
+GIT_EXTERN(int) git_pack_indexer_fill(git_pack_indexer* indexer,
+		const void *data, size_t length);
 
 GIT_END_DECL
 
