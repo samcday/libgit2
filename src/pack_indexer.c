@@ -25,6 +25,7 @@
 
 #include "common.h"
 #include "pack_indexer.h"
+#include "repository.h"
 
 #define PACK_VERSION 2
 #define PACK_IDX_SIGNATURE 0xff744f63	/* "\377tOc" */
@@ -35,7 +36,77 @@ struct pack_index_entry {
 	off_t offset;
 };
 
-static int pack_entries_sort_cb(const void *a_, const void *b_)
+union delta_base {
+	unsigned char sha1[20];
+	off_t offset;
+};
+
+static int git_pack_indexer__available(git_pack_indexer *indexer) {
+	return (indexer->current_chunk_size - indexer->current_chunk_offset) -
+			(indexer->previous_chunk_size - indexer->previous_chunk_offset);
+}
+
+static int git_pack_indexer__use(git_pack_indexer *indexer, int amount) {
+	int previous_available;
+	int current_available;
+
+	previous_available = indexer->previous_chunk_size - indexer->previous_chunk_offset;
+	current_available = indexer->current_chunk_size - indexer->current_chunk_offset;
+
+	if(amount > (previous_available + current_available)) {
+		return GIT_EOVERFLOW;
+	}
+
+	if(previous_available) {
+		if(amount >= previous_available) {
+			indexer->previous_chunk_size = indexer->previous_chunk_offset = 0;
+			free(indexer->previous_chunk);
+			amount -= previous_available;
+		}
+		else {
+			indexer->previous_chunk_offset += amount;
+		}
+	}
+
+	indexer->current_chunk_offset += amount;
+
+	if(indexer->current_chunk_offset == indexer->current_chunk_size) {
+		indexer->current_chunk_offset = indexer->current_chunk_size = 0;
+		free(indexer->current_chunk);
+	}
+
+	return GIT_SUCCESS;
+}
+
+static int git_pack_indexer__fill(git_pack_indexer *indexer, void *data, int amount) {
+	int previous_available;
+	int current_available;
+	int offset;
+	int curr;
+	int block;
+
+	previous_available = indexer->previous_chunk_size - indexer->previous_chunk_offset;
+	current_available = indexer->current_chunk_size - indexer->current_chunk_offset;
+
+	if(amount > (previous_available + current_available)) {
+		return GIT_EOVERFLOW;
+	}
+
+	if(previous_available) {
+		block = previous_available;
+		if(block > amount) {
+			block = amount;
+		}
+
+		memcpy(data, indexer->previous_chunk + indexer->previous_chunk_offset, block);
+		amount -= block;
+		data += block;
+	}
+
+	memcpy(data, indexer->current_chunk + indexer->current_chunk_offset, amount);
+}
+
+static int git_pack_indexer__sort_cb(const void *a_, const void *b_)
 {
 	struct pack_index_entry *a = *((struct pack_index_entry **)a_);
 	struct pack_index_entry *b = *((struct pack_index_entry **)b_);
@@ -44,7 +115,7 @@ static int pack_entries_sort_cb(const void *a_, const void *b_)
 	return git_oid_cmp(&a->id, &b->id);
 }
 
-static int create_indexer(int is_direct, git_pack_indexer **indexer_out) {
+static int git_pack_indexer__create_indexer(int is_direct, git_pack_indexer **indexer_out) {
 	git_pack_indexer *indexer;
 	int error;
 
@@ -57,7 +128,7 @@ static int create_indexer(int is_direct, git_pack_indexer **indexer_out) {
 	memset(indexer, 0, sizeof(git_pack_indexer));
 
 	indexer->direct = is_direct;
-	if((error = git_vector_init(&indexer->entries, 0, pack_entries_sort_cb)) != GIT_SUCCESS) {
+	if((error = git_vector_init(&indexer->entries, 0, git_pack_indexer__sort_cb)) != GIT_SUCCESS) {
 		return error;
 	}
 
@@ -74,12 +145,30 @@ static int create_indexer(int is_direct, git_pack_indexer **indexer_out) {
 	return GIT_SUCCESS;
 }
 
-int git_pack_indexer_create(git_pack_indexer **indexer_out) {
-	return create_indexer(0, indexer_out);
+int git_pack_indexer_create(git_pack_indexer **indexer_out, git_repository *repository) {
+	int error;
+	int fd;
+
+	if((error = git_pack_indexer__create_indexer(0, indexer_out)) == GIT_SUCCESS) {
+		char pack_path[GIT_PATH_MAX];
+
+		(*indexer_out)->repo = repository;
+
+		// Open a temporary file for the packfile contents we receive.
+		git__joinpath(pack_path, repository->path_odb, "pack/");
+		if((fd = gitfo_mktemp(pack_path, "tmp_pack_XXXXXX")) < GIT_SUCCESS) {
+			git_pack_indexer_free(*indexer_out);
+			return fd;
+		}
+
+		(*indexer_out)->tmp_pack_fd = fd;
+	}
+
+	return error;
 }
 
 int git_pack_indexer_create_direct(git_pack_indexer **indexer_out) {
-	return create_indexer(1, indexer_out);
+	return git_pack_indexer__create_indexer(1, indexer_out);
 }
 
 void git_pack_indexer_free(git_pack_indexer *indexer) {
@@ -220,11 +309,17 @@ int git_pack_indexer_build(git_pack_indexer *indexer, void **data_out,
 	return GIT_SUCCESS;
 }
 
-int git_pack_indexer_fill(git_pack_indexer* indexer, const void *data, size_t length) {
-	// First thing we can do with this data is hash it for final pack file hash.
-	git_hash_update(indexer->pack_hash_ctx, data, length);
+int git_pack_indexer_fill(git_pack_indexer* indexer, const void *chunk, size_t length) {
+	int error;
 
+	// First thing we can do with this data is hash it for final pack file sha1.
+	git_hash_update(indexer->pack_hash_ctx, chunk, length);
 
+	if((error = gitfo_write(indexer->tmp_pack_fd, (void*)chunk, length)) != GIT_SUCCESS) {
+		return error;
+	}
+
+	//
 
 	return GIT_SUCCESS;
 }

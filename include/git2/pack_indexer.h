@@ -42,11 +42,14 @@ GIT_BEGIN_DECL
 /**
  * Create a new packfile indexer. An indexer created in this fashion will expect
  * to be provided with raw packfile data to be processed and indexed. The
- * indexer must be free'd by the caller when it is no longer needed.
+ * indexer must be free'd by the caller when it is no longer needed. A backing
+ * repository must be provided for raw packfile indexing. As it is required for
+ * both pack thickening and for a place to store temporary data.
  * @param indexer The pointer for the new indexer.
+ * @param repository The repository this indexer belongs to.
  * @return GIT_SUCCESS on success, error otherwise.
  */
-GIT_EXTERN(int) git_pack_indexer_create(git_pack_indexer **indexer);
+GIT_EXTERN(int) git_pack_indexer_create(git_pack_indexer **indexer, git_repository *repository);
 
 /**
  * Create a new packfile indexer. A direct indexer will expect to be provided
@@ -55,7 +58,7 @@ GIT_EXTERN(int) git_pack_indexer_create(git_pack_indexer **indexer);
  * @param indexer The pointer for the new indexer.
  * @return GIT_SUCCESS on success, error otherwise.
  */
-GIT_EXTERN(int) git_pack_indexer_create(git_pack_indexer **indexer);
+GIT_EXTERN(int) git_pack_indexer_create_direct(git_pack_indexer **indexer);
 
 /**
  * Frees a previously allocated pack indexer.
